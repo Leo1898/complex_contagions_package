@@ -1,0 +1,61 @@
+[tool.poetry]
+name = "complex_contagions_package"
+version = "0.1.0"
+description = "Simulation tool to analyze networks with complex contagions behaviour."
+authors = ["Daniel Pfitzner <daniel.pfitzner@edu.uni-graz.at>"]
+readme = "README.md"
+packages = [{include = "complex_contagions_package", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+matplotlib = "^3.9.2"
+numpy = "^2.1.2"
+networkx = "^3.4.2"
+xarray = "^2024.9.0"
+logging = "^0.4.9.6"
+tqdm = "^4.66.5"
+click = "^8.1.7"
+ipywidgets = "^8.1.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 88
+fixable = ["ALL"]
+select = [
+    # flake8-builtins
+    "A",
+    # flake8-bugbear
+    "B",
+    # mccabe
+    "C90",
+    # pydocstyle
+    "D",
+    # pycodestyle error
+    "E",
+    # Pyflakes
+    "F",
+    # isort
+    "I",
+    # pep8-naming
+    "N",
+    # flake8-simplify
+    "SIM",
+    # flake8-print
+    "T20",
+    # pyupgrade
+    "UP",
+    # pycodestyle warning
+    "W"
+]
+
+[tool.ruff.mccabe]
+max-complexity = 10
+
+[tool.ruff.pydocstyle]
+convention = "google"
+
+[tool.poetry.scripts]
+ccsim = "complex_contagions_package.cli:cli"

@@ -1,0 +1,22 @@
+{
+    "alphas": {
+        "start": 1,
+        "stop": 100,
+        "steps": 100
+    },
+    "t0_values_ascending": {
+        "start": 0,
+        "stop": 1,
+        "steps": 101
+    },
+    "t0_values_descending": {
+        "start": 1,
+        "stop": 0,
+        "steps": 101
+    },
+    "INF_CHANCE": 1,
+    "network_type": "connected_watts_strogatz",
+    "hys_threshold": 50,
+    "n_simulations": 100,
+    "steps": 50
+}
