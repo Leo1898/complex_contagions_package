@@ -246,17 +246,19 @@ def create_ds(network_type, average_degree, alphas, g_type,
 
         # Add attributes to the merged dataset
         if network_type in ["connected_watts_strogatz", "random_regular_graph"]:
-            network_type_attr = f"{network_type} with aver. degree of {average_degree}"
+            average_degree = average_degree
         else:
-            network_type_attr = network_type
+            average_degree = 99
 
         final_ds.attrs = {
             "n_simulations": n_simulations,
             "iterations": steps,
-            "network_type": network_type_attr
+            "network_type": network_type,
+            "average_degree": average_degree
         }
 
-        merged_filename = os.path.join(data_dir, f"final_ds_{network_type_attr}.nc")
+        merged_filename = os.path.join(data_dir, f"final_ds_{network_type}_degree{
+            average_degree}.nc")
         final_ds.to_netcdf(merged_filename)
         log_info(f"Merged datasets saved as {merged_filename} in {data_dir}")
     else:

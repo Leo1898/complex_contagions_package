@@ -16,7 +16,7 @@
     },
     "INF_CHANCE": 1,
     "network_type": "connected_watts_strogatz",
-    "average_degree": 4,
+    "average_degree": 6,
     "n_simulations": 100,
     "steps": 50
 }
