@@ -86,14 +86,14 @@ def generate_alphas(alphas_config):
         alphas_config["steps"]
     ).tolist()
 
-def create_graph(network_type):
+def create_graph(network_type, average_degree=None):
     """Creates network according to chosen network type."""
     if network_type == "connected_watts_strogatz":
-        return nx.connected_watts_strogatz_graph(100, 4, 0.5)
-    elif network_type == "grid_2d":
-        return nx.grid_2d_graph(10, 10)
-    elif network_type == "barabasi_albert":
-        return nx.barabasi_albert_graph(100, 12)
+        return nx.connected_watts_strogatz_graph(100, average_degree, 0.5)
+    elif network_type == "random_regular_graph":
+        return nx.random_regular_graph(average_degree, 100)
+    elif network_type == "complete_graph":
+        return nx.complete_graph(100)
     else:
         raise ValueError(f"Unknown network type: {network_type}")
 
@@ -102,11 +102,16 @@ def start_simulation(config):
     config["t0_values_ascending"] = generate_t0_values(config["t0_values_ascending"])
     config["t0_values_descending"] = generate_t0_values(config["t0_values_descending"])
     config["alphas"] = generate_alphas(config["alphas"])
-    config["g_type"] = create_graph(config["network_type"])
+
+    if config["network_type"] in ["connected_watts_strogatz", "random_regular_graph"]:
+        config["g_type"] = create_graph(config["network_type"],
+                                        config["average_degree"])
+    else:
+        config["g_type"] = create_graph(config["network_type"])
 
     create_ds(
         config["network_type"],
-        config["hys_threshold"],
+        config["average_degree"],
         config["alphas"],
         config["g_type"],
         config["t0_values_ascending"],
@@ -149,14 +154,19 @@ def start():
             log_info("Exiting without starting a new simulation.")
             return
 
+    if config["network_type"] in ["connected_watts_strogatz", "random_regular_graph"]:
+        network_type_attr = f"{
+            config["network_type"]} with aver. degree of {config["average_degree"]}"
+    else:
+        network_type_attr = config["network_type"]
+
     use_defaults = click.confirm(
         f"The following settings from config.json will be applied:\n"
         f"Infection Chance: {config["INF_CHANCE"]}\n"
         f"Alpha Values: {config["alphas"]}\n"
         f"Number of Simulations: {config["n_simulations"]}\n"
         f"Steps per Simulation: {config["steps"]}\n"
-        f"Network Type: {config["network_type"]}\n"
-        f"Hysteresis Threshold: {config["hys_threshold"]}\n"
+        f"Network Type: {network_type_attr}\n"
         f"Do you want to use these settings?",
         default=True
     )
@@ -168,15 +178,21 @@ def start():
         log_info("User opted to provide custom settings.")
 
         config["network_type"] = click.prompt(
-            "Enter the network type ('connected_watts_strogatz', 'grid_2d', "
-            "'barabasi_albert')",
+            "Enter the network type ('connected_watts_strogatz', "
+            "'random_regular_graph', "
+            "'complete_graph')",
             default=config["network_type"]
         )
-        config["hys_threshold"] = click.prompt(
-            "Enter a new hysteresis threshold",
-            default=config["hys_threshold"],
-            type=int
-        )
+
+        if config["network_type"] in ["connected_watts_strogatz",
+                                      "random_regular_graph"
+                                      ]:
+            config["average_degree"] = click.prompt(
+                "Enter the average degree",
+                default=4,
+                type=int
+            )
+
         config["n_simulations"] = click.prompt(
             "Enter the number of simulations",
             default=config["n_simulations"],

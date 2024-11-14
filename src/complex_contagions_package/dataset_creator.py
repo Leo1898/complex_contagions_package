@@ -6,8 +6,8 @@ import numpy as np
 import xarray as xr
 from tqdm import tqdm
 
-from complex_contagions_package.analyser import calculate_hysteresis_gaps
 from complex_contagions_package.logging import log_error, log_info
+from complex_contagions_package.simulator import run_hysteresis_simulation
 
 
 def create_data_directory(base_dir=None, batches_dir=None):
@@ -64,9 +64,6 @@ def reload_last_batch(
             ds_alpha = xr.concat(
                 [ds_alpha, xr.Dataset(
                     {
-                        "hysteresis_gaps": (("simulation"), np.empty(
-                            n_simulations - last_simulation_index
-                            )),
                         "inflist_asc": (("simulation", "t0", "steps"), np.empty(
                             (n_simulations - last_simulation_index,
                             len(t0_values_ascending), steps)
@@ -90,7 +87,6 @@ def reload_last_batch(
     else:
         ds_alpha = xr.Dataset(
             {
-                "hysteresis_gaps": (("simulation"), np.empty(n_simulations)),
                 "inflist_asc": (("simulation", "t0", "steps"), np.empty(
                     (n_simulations, len(t0_values_ascending), steps)
                     )),
@@ -109,8 +105,7 @@ def reload_last_batch(
     return ds_alpha, last_simulation_index
 
 
-def create_ds(network_type,
-              hys_threshold, alphas, g_type,
+def create_ds(network_type, average_degree, alphas, g_type,
               t0_values_ascending, t0_values_descending,
               inf_chance, steps, n_simulations,
               base_data_dir=None, base_batch_dir=None
@@ -123,7 +118,8 @@ def create_ds(network_type,
 
     Parameters:
         network_type (str): Type of network used in the simulations.
-        hys_threshold (int): Threshold for detecting hysteresis.
+        average_degree (int): network parameter defining the average number of links
+                              associated with a node.
         alphas (list): List of alpha values (infection/recovery rate ratios).
         g_type (networkx.Graph): The network structure for simulations.
         t0_values_ascending (list): List of ascending `t0` values.
@@ -182,22 +178,17 @@ def create_ds(network_type,
 
             #Loop for simulations
             for i in range(start_simulation_index, n_simulations):
-                inflist_ascending, inflist_descending, gaps = calculate_hysteresis_gaps(
-                    hys_threshold, alpha, g_type,
+                inflist_ascending, inflist_descending = run_hysteresis_simulation(
+                    g_type, steps,
                     t0_values_ascending, t0_values_descending,
-                    inf_chance, rec_chance, steps
-                )
+                    inf_chance, rec_chance
+                    )
 
                 inflist_asc = np.array([x[2] for x in inflist_ascending])
                 inflist_desc = np.array([x[2] for x in inflist_descending])[::-1]
 
                 ds_alpha["inflist_asc"][i, :, :] = inflist_asc
                 ds_alpha["inflist_desc"][i, :, :] = inflist_desc
-
-                if gaps:
-                    ds_alpha["hysteresis_gaps"][i] = gaps[0]
-                else:
-                    ds_alpha["hysteresis_gaps"][i] = np.nan
 
                 completed_simulations += 1
                 pbar.update(1)
@@ -254,14 +245,18 @@ def create_ds(network_type,
         final_ds = xr.concat(datasets, dim="alpha")
 
         # Add attributes to the merged dataset
+        if network_type in ["connected_watts_strogatz", "random_regular_graph"]:
+            network_type_attr = f"{network_type} with aver. degree of {average_degree}"
+        else:
+            network_type_attr = network_type
+
         final_ds.attrs = {
             "n_simulations": n_simulations,
             "iterations": steps,
-            "hys_threshold": hys_threshold,
-            "network_type": network_type,
+            "network_type": network_type_attr
         }
 
-        merged_filename = os.path.join(data_dir, "final_simulation_dataset.nc")
+        merged_filename = os.path.join(data_dir, f"final_ds_{network_type_attr}.nc")
         final_ds.to_netcdf(merged_filename)
         log_info(f"Merged datasets saved as {merged_filename} in {data_dir}")
     else:

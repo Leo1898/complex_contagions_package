@@ -134,4 +134,9 @@ def calculate_hysteresis_gaps(
             hysteresis_gap = stable_asc - stable_desc
             hysteresis_gaps.append(hysteresis_gap)
 
+    # if gaps:
+    #     ds_alpha["hysteresis_gaps"][i] = gaps[0]
+    # else:
+    #     ds_alpha["hysteresis_gaps"][i] = np.nan
+
     return inflist_ascending, inflist_descending, hysteresis_gaps
