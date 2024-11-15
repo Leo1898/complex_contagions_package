@@ -10,14 +10,20 @@ from complex_contagions_package.logging import log_error, log_info
 from complex_contagions_package.simulator import run_hysteresis_simulation
 
 
-def create_data_directory(base_dir=None, batches_dir=None):
-    """Create or return existing data and batch directory for storing results."""
+def create_data_directory(base_dir=None, batches_dir=None, dataset_dir=None):
+    """Create or return data, dataset and batch directory for storing results."""
     if base_dir is None:
         base_dir = os.path.abspath(os.path.join(
             os.path.dirname(__file__), "..", "..", "data"
             ))
+
     if batches_dir is None:
         batches_dir = os.path.join(base_dir, "batches")
+
+    if dataset_dir is None:
+        dataset_dir = os.path.abspath(os.path.join(
+            os.path.dirname(__file__), "..", "..", "datasets"
+            ))
 
     if not os.path.exists(base_dir):
         os.makedirs(base_dir)
@@ -25,7 +31,10 @@ def create_data_directory(base_dir=None, batches_dir=None):
     if not os.path.exists(batches_dir):
         os.makedirs(batches_dir)
 
-    return base_dir, batches_dir
+    if not os.path.exists(dataset_dir):
+        os.makedirs(dataset_dir)
+
+    return base_dir, batches_dir, dataset_dir
 
 def load_checkpoint(checkpoint_file):
     """Load the checkpoint from a JSON file."""
@@ -108,7 +117,7 @@ def reload_last_batch(
 def create_ds(network_type, average_degree, alphas, g_type,
               t0_values_ascending, t0_values_descending,
               inf_chance, steps, n_simulations,
-              base_data_dir=None, base_batch_dir=None
+              base_data_dir=None, base_batch_dir=None, base_dataset_dir=None
               ):
     """Runs simulations for various alpha values and stores results in netCDF format.
 
@@ -129,8 +138,13 @@ def create_ds(network_type, average_degree, alphas, g_type,
         n_simulations (int): Number of simulations to run per alpha.
         base_data_dir (str, optional): Directory to save the final results.
         base_batch_dir (str, optional): Directory to store intermediate batch files.
+        base_dataset_dir (str, optional): Directory to store final dataset files.
     """
-    data_dir, batches_dir = create_data_directory(base_data_dir, base_batch_dir)
+    data_dir, batches_dir, dataset_dir = create_data_directory(base_data_dir,
+                                                               base_batch_dir,
+                                                               base_dataset_dir
+                                                               )
+
     checkpoint_file = os.path.join(data_dir, "checkpoint.json")
     checkpoint = load_checkpoint(checkpoint_file)
 
@@ -257,7 +271,7 @@ def create_ds(network_type, average_degree, alphas, g_type,
             "average_degree": average_degree
         }
 
-        merged_filename = os.path.join(data_dir, f"final_ds_{network_type}_degree{
+        merged_filename = os.path.join(dataset_dir, f"final_ds_{network_type}_degree{
             average_degree}.nc")
         final_ds.to_netcdf(merged_filename)
         log_info(f"Merged datasets saved as {merged_filename} in {data_dir}")

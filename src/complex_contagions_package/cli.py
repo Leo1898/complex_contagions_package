@@ -9,7 +9,7 @@ import numpy as np
 from complex_contagions_package.dataset_creator import create_data_directory, create_ds
 from complex_contagions_package.logging import log_error, log_info
 
-data_dir, batches_dir = create_data_directory()
+data_dir, batches_dir, _ = create_data_directory()
 checkpoint_file = os.path.join(data_dir, "checkpoint.json")
 config_file = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                             "..", "..",
