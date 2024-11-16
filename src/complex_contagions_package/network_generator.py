@@ -33,7 +33,7 @@ def makeg(t0, g_type, simulation_type="ascending", prev_g=None):
 
         g = prev_g.copy()
 
-        #nx.set_node_attributes(g, t0, "t")
+        nx.set_node_attributes(g, t0, "t")
         #nx.set_node_attributes(g, 0, "inf")
 
     return g

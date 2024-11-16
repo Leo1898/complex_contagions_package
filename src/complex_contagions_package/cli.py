@@ -76,7 +76,7 @@ def generate_t0_values(t0_config):
         t0_config["start"],
         t0_config["stop"],
         t0_config["steps"]
-    ).tolist()
+    )#.tolist()
 
 def generate_alphas(alphas_config):
     """Converts alphas from config into a list."""
@@ -84,7 +84,7 @@ def generate_alphas(alphas_config):
         alphas_config["start"],
         alphas_config["stop"],
         alphas_config["steps"]
-    ).tolist()
+    )#.tolist()
 
 def create_graph(network_type, average_degree=None):
     """Creates network according to chosen network type."""
@@ -189,7 +189,7 @@ def start():
                                       ]:
             config["average_degree"] = click.prompt(
                 "Enter the average degree",
-                default=4,
+                default=config["average_degree"],
                 type=int
             )
 
