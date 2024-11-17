@@ -1,6 +1,8 @@
 """Visualizer module."""
 import ipywidgets as widgets
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import xarray as xr
 from IPython.display import display
 
@@ -10,44 +12,45 @@ class DiffusionPlotter:
     def __init__(self, dataset=None, dataset_path=None):
         """Initialization function."""
         if dataset_path:
-            self.ds_alpha = xr.open_dataset(dataset_path)
+            self.ds = xr.open_dataset(dataset_path)
         elif dataset is not None:
-            self.ds_alpha = dataset
+            self.ds = dataset
         else:
             raise ValueError("Either a dataset or a dataset_path must be provided.")
 
-        self.available_simulation = self.ds_alpha.coords["simulation"].values
-        self.available_alphas = self.ds_alpha.coords["alpha"].values
+        self.available_simulation = self.ds.coords["simulation"].values
+        self.available_alphas = self.ds.coords["alpha"].values
+        self.available_t0 = self.ds.coords["t0"].values
 
-    def consolidate_data(self, simulation, alpha):
+    def consolidate_data(self, simulation):
         """Returns data for chosen alpha and simulation no. or average if selected."""
-        ds_filtered = self.ds_alpha.sel(alpha=alpha)
+        ds = self.ds
 
-        if simulation == "Average":
-            inflist_asc_last_step = ds_filtered.inflist_asc.isel(steps=-1).mean(
+        if isinstance(simulation, str) and simulation == "Average":
+            inflist_asc_last_step = ds.inflist_asc.isel(steps=-1).mean(
                 dim="simulation"
                 )
-            inflist_desc_last_step = ds_filtered.inflist_desc.isel(steps=-1).mean(
+            inflist_desc_last_step = ds.inflist_desc.isel(steps=-1).mean(
                 dim="simulation"
                 )
-            inflist_asc_all_steps = ds_filtered.inflist_asc.mean(
+            inflist_asc_all_steps = ds.inflist_asc.mean(
                 dim="simulation"
                 )
-            inflist_desc_all_steps = ds_filtered.inflist_desc.mean(
+            inflist_desc_all_steps = ds.inflist_desc.mean(
                 dim="simulation"
                 )
         else:
             simulation_index = simulation - 1
-            inflist_asc_last_step = ds_filtered.inflist_asc.isel(
+            inflist_asc_last_step = ds.inflist_asc.isel(
                 simulation=simulation_index, steps=-1
                 )
-            inflist_desc_last_step = ds_filtered.inflist_desc.isel(
+            inflist_desc_last_step = ds.inflist_desc.isel(
                 simulation=simulation_index, steps=-1
                 )
-            inflist_asc_all_steps = ds_filtered.inflist_asc.isel(
+            inflist_asc_all_steps = ds.inflist_asc.isel(
                 simulation=simulation_index
                 )
-            inflist_desc_all_steps = ds_filtered.inflist_desc.isel(
+            inflist_desc_all_steps = ds.inflist_desc.isel(
                 simulation=simulation_index
                 )
 
@@ -72,8 +75,13 @@ class DiffusionPlotter:
         ax2 = ax_main.twinx() if use_slider and direction != "Asc vs Desc" else None
 
         for alpha in alphas:
-            lists = self.consolidate_data(simulation, alpha)
+            lists = self.consolidate_data(simulation)
             inflist_asc_fin, inflist_desc_fin, inflist_asc_all, inflist_desc_all = lists
+
+            inflist_asc_fin = inflist_asc_fin.sel(alpha=alpha)
+            inflist_desc_fin = inflist_desc_fin.sel(alpha=alpha)
+            inflist_asc_all = inflist_asc_all.sel(alpha=alpha)
+            inflist_desc_all = inflist_desc_all.sel(alpha=alpha)
 
             if direction == "Asc vs Desc":
                 inflist_asc_fin.plot(x="t0", ax=ax_main,
@@ -188,43 +196,39 @@ class DiffusionPlotter:
         display(main_box)
         display(interactive_plot.children[-1])
 
-    def plot_hysteresis_gaps_with_nan_count(self):
+    def hysteresis_boxplot(self):
         """Creates a boxplot.
 
-        Boxplot for the distribution of hysteresis gaps per alpha value and line
-        showing the number of NaN values per alpha.
+        Boxplot for the distribution of hysteresis per alpha value.
         """
-        hysteresis_gaps_df = self.ds_alpha.hysteresis_gaps.to_dataframe().reset_index()
+        simulation = self.available_simulation
 
-        nan_counts = hysteresis_gaps_df.groupby('alpha')['hysteresis_gaps'].apply(
-            lambda x: x.isna().sum()
-            )
+        lists = self.consolidate_data(simulation)
+        asc_curve, desc_curve, _, _ = lists
 
-        fig, ax_main = plt.subplots(figsize=(15, 8))  # Größe des Diagramms festlegen
-        ax_secondary = ax_main.twinx()  # Sekundäre y-Achse hinzufügen
+        hysteresis_areas = []
+        for alpha in self.available_alphas:
+            for sim in range(len(self.available_simulation)):
+                asc_sim = asc_curve.sel(alpha=alpha).isel(simulation=sim)
+                desc_sim = desc_curve.sel(alpha=alpha).isel(simulation=sim)
 
-        hysteresis_gaps_df.boxplot(column='hysteresis_gaps', by='alpha', ax=ax_main,
+                area = np.trapz((asc_sim - desc_sim), x=self.available_t0)
+                hysteresis_areas.append({"alpha": alpha,
+                                         "simulation": sim,
+                                         "hysteresis_area": area
+                                         })
+
+        hysteresis_df = pd.DataFrame(hysteresis_areas)
+
+        fig, ax_main = plt.subplots(figsize=(15, 8))
+
+        hysteresis_df.boxplot(column='hysteresis_area', by='alpha', ax=ax_main,
                                     grid=False
                                     )
 
-        ax_secondary.plot(nan_counts.index, nan_counts.values, marker='o',
-                          linestyle='-', label='NaN count'
-                          )
-        ax_secondary.set_ylabel('Number of missing critical t0')
-        ax_secondary.tick_params(axis='y')
-
-        ax_main.set_title('Gaps boxplot and missing critical t0 per alpha')
+        ax_main.set_title('Hysteresis boxplot per alpha')
         ax_main.set_xlabel('alpha')
-        ax_main.set_ylabel('Hysteresis gaps')
+        ax_main.set_ylabel('Hysteresis')
         plt.suptitle('')
-
-        ticks = ax_main.get_xticks()
-        selected_ticks = [tick for tick in ticks if tick % 5 == 0]
-        ax_main.set_xticks(selected_ticks)
-        ax_main.set_xticklabels([str(int(tick)) for tick in selected_ticks])
-        ax_main.xaxis.set_minor_locator(plt.MultipleLocator(1))
-        ax_main.tick_params(which='minor', length=4, color='gray', labelsize=8)
-
         plt.tight_layout()
-        ax_secondary.legend(loc="upper right")
         plt.show()

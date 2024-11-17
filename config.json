@@ -15,8 +15,8 @@
         "steps": 101
     },
     "INF_CHANCE": 1,
-    "network_type": "connected_watts_strogatz",
-    "average_degree": 6,
+    "network_type": "random_regular_graph",
+    "average_degree": 4,
     "n_simulations": 100,
     "steps": 50
 }
