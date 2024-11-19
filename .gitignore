@@ -1,2 +1,5 @@
 datasets/
 data/
+src/complex_contagions_package/__pycache__/
+*.pyc
+*.pyo
