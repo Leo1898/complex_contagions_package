@@ -57,6 +57,15 @@ class DiffusionPlotter:
         return (inflist_asc_last_step, inflist_desc_last_step,
                 inflist_asc_all_steps, inflist_desc_all_steps)
 
+
+    def multiple_instances(self, dataset_paths):
+        """Creates DiffusionPlotter instances based on the passed dataset paths."""
+        # Sicherstellen, dass dataset_paths immer eine Liste ist
+        if isinstance(dataset_paths, str):
+            dataset_paths = [dataset_paths]
+
+        return [DiffusionPlotter(dataset_path=path) for path in dataset_paths]
+
     def plot_alpha_sim(self, alpha_input, alpha_slider,
                        simulation, direction, show_average
                        ):
@@ -196,29 +205,48 @@ class DiffusionPlotter:
         display(main_box)
         display(interactive_plot.children[-1])
 
-    def hysteresis_boxplot(self):
-        """Creates a boxplot.
-
-        Boxplot for the distribution of hysteresis per alpha value.
-        """
+    def hysteresis_calc(self):
+        """Calculates hysteresis areas and averages per alpha."""
         simulation = self.available_simulation
 
         lists = self.consolidate_data(simulation)
         asc_curve, desc_curve, _, _ = lists
 
         hysteresis_areas = []
+        avg_hysteresis_areas = []
+
         for alpha in self.available_alphas:
+            areas_per_alpha = []  # Liste, um Hysteresenflächen je Alpha zu speichern
             for sim in range(len(self.available_simulation)):
                 asc_sim = asc_curve.sel(alpha=alpha).isel(simulation=sim)
                 desc_sim = desc_curve.sel(alpha=alpha).isel(simulation=sim)
 
+                # Berechnung der Hysteresenfläche für jede Simulation
                 area = np.trapz((asc_sim - desc_sim), x=self.available_t0)
                 hysteresis_areas.append({"alpha": alpha,
-                                         "simulation": sim,
-                                         "hysteresis_area": area
-                                         })
+                                        "simulation": sim,
+                                        "hysteresis_area": area
+                                        })
+                areas_per_alpha.append(area)
+
+            # Berechnung des Durchschnitts der Hysteresenflächen für diesen Alpha-Wert
+            avg_area = np.mean(areas_per_alpha)
+            avg_hysteresis_areas.append({"alpha": alpha,
+                                        "avg_hysteresis_area": avg_area
+                                        })
 
         hysteresis_df = pd.DataFrame(hysteresis_areas)
+        avg_hysteresis_df = pd.DataFrame(avg_hysteresis_areas)
+
+        return hysteresis_df, avg_hysteresis_df
+
+
+    def hysteresis_boxplot(self):
+        """Creates a boxplot.
+
+        Boxplot for the distribution of hysteresis per alpha value.
+        """
+        hysteresis_df, _ = self.hysteresis_calc()
 
         fig, ax_main = plt.subplots(figsize=(15, 8))
 
@@ -229,6 +257,32 @@ class DiffusionPlotter:
         ax_main.set_title('Hysteresis boxplot per alpha')
         ax_main.set_xlabel('alpha')
         ax_main.set_ylabel('Hysteresis')
+        plt.suptitle('')
+        plt.tight_layout()
+        plt.show()
+
+    def avg_hysteresis_per_alpha(self, dataset_paths):
+        """Plots the average hysteresis area per alpha as a curve."""
+        fig, ax_main = plt.subplots(figsize=(15, 8))
+
+        for dataset_path in dataset_paths:
+            instance = DiffusionPlotter(dataset_path=dataset_path)
+            _, avg_hysteresis_df = instance.hysteresis_calc()
+
+            network_type = instance.ds.attrs.get("network_type", "Unknown")
+            average_degree = instance.ds.attrs.get("average_degree", "Unknown")
+
+            network_label = f"Type: {network_type}, Degree: {average_degree}"
+
+            ax_main.plot(avg_hysteresis_df['alpha'],
+                            avg_hysteresis_df['avg_hysteresis_area'],
+                            marker='o', linestyle='-',
+                            label=network_label)
+
+        ax_main.set_title('Average Hysteresis per alpha')
+        ax_main.set_xlabel('Alpha')
+        ax_main.set_ylabel('Average Hysteresis area')
+        ax_main.legend()
         plt.suptitle('')
         plt.tight_layout()
         plt.show()
