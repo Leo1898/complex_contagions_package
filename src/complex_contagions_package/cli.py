@@ -9,7 +9,7 @@ import numpy as np
 from complex_contagions_package.dataset_creator import create_data_directory, create_ds
 from complex_contagions_package.logging import log_error, log_info
 
-data_dir, batches_dir, _ = create_data_directory()
+data_dir, _ = create_data_directory()
 checkpoint_file = os.path.join(data_dir, "checkpoint.json")
 config_file = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                             "..", "..",
@@ -35,15 +35,13 @@ def check_for_checkpoint():
     if os.path.exists(checkpoint_file):
         with open(checkpoint_file) as f:
             checkpoint_data = json.load(f)
-            return checkpoint_data.get("alpha_index", 0) != 0 or checkpoint_data.get(
-                "simulation_index", 0
-                ) != 0
+            return checkpoint_data.get("alpha_index", 0) != 0
     return False
 
 def reset_checkpoint():
     """Resets checkpoint to initial state."""
     with open(checkpoint_file, "w") as f:
-        json.dump({"alpha_index": 0, "simulation_index": 0}, f)
+        json.dump({"alpha_index": 0}, f)
     log_info("Checkpoint has been reset.")
 
 def delete_simulation_files():
@@ -57,18 +55,6 @@ def delete_simulation_files():
                     log_info(f"Deleted file: {file_path}")
             except Exception as e:
                 log_error(f"Failed to delete file {file_path}: {e}")
-
-    if os.path.exists(batches_dir):
-        for file_name in os.listdir(batches_dir):
-            file_path = os.path.join(batches_dir, file_name)
-            try:
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-                    log_info(f"Deleted file in batches: {file_path}")
-            except Exception as e:
-                log_error(f"Failed to delete file in batches directory: {e}")
-    else:
-        log_info(f"Batches directory {batches_dir} does not exist or is already empty.")
 
 def generate_t0_values(t0_config):
     """Converts t0 values from config into a list."""
