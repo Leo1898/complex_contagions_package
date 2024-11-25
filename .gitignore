@@ -1,5 +1,7 @@
 datasets/
+datasetsForRec/
 data/
+dataForRec/
 figs/
 src/complex_contagions_package/__pycache__/
 *.pyc
