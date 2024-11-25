@@ -1,10 +1,16 @@
 """Visualizer module."""
+from itertools import cycle
+
 import ipywidgets as widgets
 import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 import xarray as xr
 from IPython.display import display
+
+from complex_contagions_package.analyser import (
+    calculate_peak_and_t0,
+    consolidate_data,
+    hysteresis_calc,
+)
 
 
 class DiffusionPlotter:
@@ -21,42 +27,6 @@ class DiffusionPlotter:
         self.available_simulation = self.ds.coords["simulation"].values
         self.available_alphas = self.ds.coords["alpha"].values
         self.available_t0 = self.ds.coords["t0"].values
-
-    def consolidate_data(self, simulation):
-        """Returns data for chosen alpha and simulation no. or average if selected."""
-        ds = self.ds
-
-        if isinstance(simulation, str) and simulation == "Average":
-            inflist_asc_last_step = ds.inflist_asc.isel(steps=-1).mean(
-                dim="simulation"
-                )
-            inflist_desc_last_step = ds.inflist_desc.isel(steps=-1).mean(
-                dim="simulation"
-                )
-            inflist_asc_all_steps = ds.inflist_asc.mean(
-                dim="simulation"
-                )
-            inflist_desc_all_steps = ds.inflist_desc.mean(
-                dim="simulation"
-                )
-        else:
-            simulation_index = simulation - 1
-            inflist_asc_last_step = ds.inflist_asc.isel(
-                simulation=simulation_index, steps=-1
-                )
-            inflist_desc_last_step = ds.inflist_desc.isel(
-                simulation=simulation_index, steps=-1
-                )
-            inflist_asc_all_steps = ds.inflist_asc.isel(
-                simulation=simulation_index
-                )
-            inflist_desc_all_steps = ds.inflist_desc.isel(
-                simulation=simulation_index
-                )
-
-        return (inflist_asc_last_step, inflist_desc_last_step,
-                inflist_asc_all_steps, inflist_desc_all_steps)
-
 
     def multiple_instances(self, dataset_paths):
         """Creates DiffusionPlotter instances based on the passed dataset paths."""
@@ -82,9 +52,10 @@ class DiffusionPlotter:
 
         fig, ax_main = plt.subplots(figsize=(15, 5))
         ax2 = ax_main.twinx() if use_slider and direction != "Asc vs Desc" else None
+        ds = self.ds
 
         for alpha in alphas:
-            lists = self.consolidate_data(simulation)
+            lists = consolidate_data(simulation, ds)
             inflist_asc_fin, inflist_desc_fin, inflist_asc_all, inflist_desc_all = lists
 
             inflist_asc_fin = inflist_asc_fin.sel(alpha=alpha)
@@ -145,7 +116,7 @@ class DiffusionPlotter:
             value=self.available_alphas[-1],
             min=self.available_alphas.min(),
             max=self.available_alphas.max(),
-            step=1,
+            step=2,
             description="Alpha:",
             continuous_update=False
         )
@@ -205,48 +176,21 @@ class DiffusionPlotter:
         display(main_box)
         display(interactive_plot.children[-1])
 
-    def hysteresis_calc(self):
-        """Calculates hysteresis areas and averages per alpha."""
-        simulation = self.available_simulation
-
-        lists = self.consolidate_data(simulation)
-        asc_curve, desc_curve, _, _ = lists
-
-        hysteresis_areas = []
-        avg_hysteresis_areas = []
-
-        for alpha in self.available_alphas:
-            areas_per_alpha = []  # Liste, um Hysteresenflächen je Alpha zu speichern
-            for sim in range(len(self.available_simulation)):
-                asc_sim = asc_curve.sel(alpha=alpha).isel(simulation=sim)
-                desc_sim = desc_curve.sel(alpha=alpha).isel(simulation=sim)
-
-                # Berechnung der Hysteresenfläche für jede Simulation
-                area = np.trapz((asc_sim - desc_sim), x=self.available_t0)
-                hysteresis_areas.append({"alpha": alpha,
-                                        "simulation": sim,
-                                        "hysteresis_area": area
-                                        })
-                areas_per_alpha.append(area)
-
-            # Berechnung des Durchschnitts der Hysteresenflächen für diesen Alpha-Wert
-            avg_area = np.mean(areas_per_alpha)
-            avg_hysteresis_areas.append({"alpha": alpha,
-                                        "avg_hysteresis_area": avg_area
-                                        })
-
-        hysteresis_df = pd.DataFrame(hysteresis_areas)
-        avg_hysteresis_df = pd.DataFrame(avg_hysteresis_areas)
-
-        return hysteresis_df, avg_hysteresis_df
-
-
     def hysteresis_boxplot(self):
         """Creates a boxplot.
 
         Boxplot for the distribution of hysteresis per alpha value.
         """
-        hysteresis_df, _ = self.hysteresis_calc()
+        simulation = self.available_simulation
+        ds = self.ds
+        alphas = self.available_alphas
+        t0 = self.available_t0
+        network_type = ds.attrs.get("network_type", "Unknown")
+        average_degree = ds.attrs.get("average_degree", "Unknown")
+
+        hysteresis_df, _ = hysteresis_calc(simulation, ds, alphas, t0)
+
+        #hysteresis_df['recovery_rate'] = 1 / hysteresis_df['alpha']
 
         fig, ax_main = plt.subplots(figsize=(15, 8))
 
@@ -254,9 +198,70 @@ class DiffusionPlotter:
                                     grid=False
                                     )
 
-        ax_main.set_title('Hysteresis boxplot per alpha')
+        ax_main.set_xticks(range(1, len(alphas) + 1))
+        ax_main.set_xticklabels([int(alpha) for alpha in alphas])
+
+        ax_main.set_title(f"Hysteresis boxplot per alpha for {network_type} (Degree: {
+            average_degree})")
         ax_main.set_xlabel('alpha')
         ax_main.set_ylabel('Hysteresis')
+        plt.suptitle('')
+        plt.tight_layout()
+        plt.show()
+
+        # Neue Funktion im visualizer Modul zum Scatter-Plot der kritischen t0-Werte
+    def boxplot_max_peaks_per_alpha(self):
+        """Scatterplot der Max-Peaks je Simulation pro Alpha."""
+        simulation = self.available_simulation
+        ds = self.ds
+        alphas = self.available_alphas
+        t0 = self.available_t0
+        network_type = ds.attrs.get("network_type", "Unknown")
+        average_degree = ds.attrs.get("average_degree", "Unknown")
+
+        peak_data = calculate_peak_and_t0(simulation, ds, alphas, t0)
+
+        fig, ax_main = plt.subplots(figsize=(15, 8))
+
+        peak_data.boxplot(column='max_peak', by='alpha', ax=ax_main,
+                                    grid=False
+                                    )
+
+        ax_main.set_xticks(range(1, len(alphas) + 1))
+        ax_main.set_xticklabels([int(alpha) for alpha in alphas])
+
+        ax_main.set_title(f"Max Peak boxplot per alpha for {network_type} (Degree: {
+            average_degree})")
+        ax_main.set_xlabel('alpha')
+        ax_main.set_ylabel('Max Peak')
+        plt.suptitle('')
+        plt.tight_layout()
+        plt.show()
+
+    def boxplot_peakt0_per_alpha(self):
+        """Scatterplot der Max-Peaks je Simulation pro Alpha."""
+        simulation = self.available_simulation
+        ds = self.ds
+        alphas = self.available_alphas
+        t0 = self.available_t0
+        network_type = ds.attrs.get("network_type", "Unknown")
+        average_degree = ds.attrs.get("average_degree", "Unknown")
+
+        peak_data = calculate_peak_and_t0(simulation, ds, alphas, t0)
+
+        fig, ax_main = plt.subplots(figsize=(15, 8))
+
+        peak_data.boxplot(column='peak_t0', by='alpha', ax=ax_main,
+                                    grid=False
+                                    )
+
+        ax_main.set_xticks(range(1, len(alphas) + 1))
+        ax_main.set_xticklabels([int(alpha) for alpha in alphas])
+
+        ax_main.set_title(f"Max Peak boxplot per alpha for {network_type} (Degree: {
+            average_degree})")
+        ax_main.set_xlabel('alpha')
+        ax_main.set_ylabel('Max Peak')
         plt.suptitle('')
         plt.tight_layout()
         plt.show()
@@ -265,24 +270,154 @@ class DiffusionPlotter:
         """Plots the average hysteresis area per alpha as a curve."""
         fig, ax_main = plt.subplots(figsize=(15, 8))
 
+        # Zuordnungen für Farben und Linienstile
+        color_map = {}  # Speichert Farben für jeden network_type
+        linestyle_map = {}  # Speichert Linienstile für jeden average_degree
+        colors = cycle(plt.cm.tab10.colors)  # Verwende einen vordefinierten Farbsatz
+        linestyles = cycle(['-', '--', '-.', ':'])  # Definiere die Linienstile
+
         for dataset_path in dataset_paths:
-            instance = DiffusionPlotter(dataset_path=dataset_path)
-            _, avg_hysteresis_df = instance.hysteresis_calc()
+            # Lade den Datensatz
+            ds = xr.open_dataset(dataset_path)
 
-            network_type = instance.ds.attrs.get("network_type", "Unknown")
-            average_degree = instance.ds.attrs.get("average_degree", "Unknown")
+            # Extrahiere die benötigten Parameter
+            simulation = ds.simulation.values
+            alphas = ds.alpha.values
+            t0 = ds.t0.values
 
-            network_label = f"Type: {network_type}, Degree: {average_degree}"
+            # Berechne die Hysterese
+            _, avg_hysteresis_df = hysteresis_calc(simulation, ds, alphas, t0)
 
+            # Extrahiere Metadaten
+            network_type = ds.attrs.get("network_type", "Unknown")
+            average_degree = ds.attrs.get("average_degree", "Unknown")
+
+            # Farbe auswählen (oder neu zuordnen)
+            if average_degree not in color_map:
+                color_map[average_degree] = next(colors)
+
+            # Linienstil auswählen (oder neu zuordnen)
+            if network_type not in linestyle_map:
+                linestyle_map[network_type] = next(linestyles)
+
+            #x = 1/avg_hysteresis_df['alpha']
+
+            # Plotte die Daten
             ax_main.plot(avg_hysteresis_df['alpha'],
-                            avg_hysteresis_df['avg_hysteresis_area'],
-                            marker='o', linestyle='-',
-                            label=network_label)
+                        avg_hysteresis_df['avg_hysteresis_area'],
+                        #marker='o',
+                        linestyle=linestyle_map[network_type],
+                        color=color_map[average_degree],
+                        label=f"{network_type} (Degree: {average_degree})")
 
+        # Beschriftung und Formatierung
         ax_main.set_title('Average Hysteresis per alpha')
         ax_main.set_xlabel('Alpha')
-        ax_main.set_ylabel('Average Hysteresis area')
+        ax_main.set_ylabel('Average Hysteresis Area')
         ax_main.legend()
-        plt.suptitle('')
+        plt.tight_layout()
+        plt.show()
+
+    def avg_maxpeak_per_alpha(self, dataset_paths):
+        """Plots the average hysteresis area per alpha as a curve."""
+        fig, ax_main = plt.subplots(figsize=(15, 8))
+
+        # Zuordnungen für Farben und Linienstile
+        color_map = {}  # Speichert Farben für jeden network_type
+        linestyle_map = {}  # Speichert Linienstile für jeden average_degree
+        colors = cycle(plt.cm.tab10.colors)  # Verwende einen vordefinierten Farbsatz
+        linestyles = cycle(['-', '--', '-.', ':'])  # Definiere die Linienstile
+
+        for dataset_path in dataset_paths:
+            # Lade den Datensatz
+            ds = xr.open_dataset(dataset_path)
+
+            # Extrahiere die benötigten Parameter
+            simulation = ds.simulation.values
+            alphas = ds.alpha.values
+            t0 = ds.t0.values
+
+            # Berechne die Hysterese
+            _, mean_peak_data = calculate_peak_and_t0(simulation, ds, alphas, t0)
+
+            # Extrahiere Metadaten
+            network_type = ds.attrs.get("network_type", "Unknown")
+            average_degree = ds.attrs.get("average_degree", "Unknown")
+
+            # Farbe auswählen (oder neu zuordnen)
+            if average_degree not in color_map:
+                color_map[average_degree] = next(colors)
+
+            # Linienstil auswählen (oder neu zuordnen)
+            if network_type not in linestyle_map:
+                linestyle_map[network_type] = next(linestyles)
+
+            #x = 1/avg_hysteresis_df['alpha']
+
+            # Plotte die Daten
+            ax_main.plot(mean_peak_data['alpha'],
+                        mean_peak_data['max_peak'],
+                        #marker='o',
+                        linestyle=linestyle_map[network_type],
+                        color=color_map[average_degree],
+                        label=f"{network_type} (Degree: {average_degree})")
+
+        # Beschriftung und Formatierung
+        ax_main.set_title('Average MaxPeak per alpha')
+        ax_main.set_xlabel('Alpha')
+        ax_main.set_ylabel('Average Max Peak')
+        ax_main.legend()
+        plt.tight_layout()
+        plt.show()
+
+    def avg_peakt0_per_alpha(self, dataset_paths):
+        """Plots the average hysteresis area per alpha as a curve."""
+        fig, ax_main = plt.subplots(figsize=(15, 8))
+
+        # Zuordnungen für Farben und Linienstile
+        color_map = {}  # Speichert Farben für jeden network_type
+        linestyle_map = {}  # Speichert Linienstile für jeden average_degree
+        colors = cycle(plt.cm.tab10.colors)  # Verwende einen vordefinierten Farbsatz
+        linestyles = cycle(['-', '--', '-.', ':'])  # Definiere die Linienstile
+
+        for dataset_path in dataset_paths:
+            # Lade den Datensatz
+            ds = xr.open_dataset(dataset_path)
+
+            # Extrahiere die benötigten Parameter
+            simulation = ds.simulation.values
+            alphas = ds.alpha.values
+            t0 = ds.t0.values
+
+            # Berechne die Hysterese
+            _, mean_peak_data = calculate_peak_and_t0(simulation, ds, alphas, t0)
+
+            # Extrahiere Metadaten
+            network_type = ds.attrs.get("network_type", "Unknown")
+            average_degree = ds.attrs.get("average_degree", "Unknown")
+
+            # Farbe auswählen (oder neu zuordnen)
+            if average_degree not in color_map:
+                color_map[average_degree] = next(colors)
+
+            # Linienstil auswählen (oder neu zuordnen)
+            if network_type not in linestyle_map:
+                linestyle_map[network_type] = next(linestyles)
+
+            #x = 1/avg_hysteresis_df['alpha']
+
+            # Plotte die Daten
+            ax_main.plot(mean_peak_data['alpha'],
+                        mean_peak_data['peak_t0'],
+                        #marker='o',
+                        linestyle=linestyle_map[network_type],
+                        color=color_map[average_degree],
+                        label=f"{network_type} (Degree: {average_degree})")
+
+        # Beschriftung und Formatierung
+        ax_main.set_title('Average PeakT0 per alpha')
+        ax_main.set_xlabel('Alpha')
+        ax_main.set_ylabel('Average Peak t0')
+        ax_main.legend()
         plt.tight_layout()
         plt.show()
