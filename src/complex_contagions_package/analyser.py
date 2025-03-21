@@ -39,7 +39,9 @@ def consolidate_data(simulation, ds):
     return (inflist_asc_last_step, inflist_desc_last_step,
             inflist_asc_all_steps, inflist_desc_all_steps)
 
-def hysteresis_calc(simulation, ds, alphas, t0):
+def hysteresis_calc(simulation, ds,
+                    alphas,
+                    t0):
     """Calculates hysteresis areas and averages per alpha."""
     lists = consolidate_data(simulation, ds)
     asc_curve, desc_curve, _, _ = lists
@@ -91,18 +93,15 @@ def calculate_peak_and_t0(simulation, ds, alphas, t0):
     peaks_data = []
 
     for alpha in alphas:
-        # Auf Alpha-Wert beschränken
         asc_curve = inflist_asc.sel(alpha=alpha)
         desc_curve = inflist_desc.sel(alpha=alpha)
 
         # Für alle Simulationen die Maxima berechnen
         num_simulations = len(simulation)
         for sim_idx in range(num_simulations):
-            # Simulation spezifisch extrahieren
             asc_sim = asc_curve.isel(simulation=sim_idx)
             desc_sim = desc_curve.isel(simulation=sim_idx)
 
-            # Abstand zwischen Auf- und Abstieg berechnen
             distance = np.abs(asc_sim - desc_sim)
 
             # Maximalen Abstand und zugehörige t0-Werte finden

@@ -1,7 +1,8 @@
 """Dataset creation."""
 import json
 import os
-from multiprocessing import Manager, Pool
+import re
+from multiprocessing import Pool
 
 import numpy as np
 import xarray as xr
@@ -15,12 +16,12 @@ def create_data_directory(base_dir=None, dataset_dir=None):
     """Create or return data, dataset and batch directory for storing results."""
     if base_dir is None:
         base_dir = os.path.abspath(os.path.join(
-            os.path.dirname(__file__), "..", "..", "data"
+            os.path.dirname(__file__), "..", "..", "dataForRec"
             ))
 
     if dataset_dir is None:
         dataset_dir = os.path.abspath(os.path.join(
-            os.path.dirname(__file__), "..", "..", "datasets"
+            os.path.dirname(__file__), "..", "..", "datasetsForRec"
             ))
 
     if not os.path.exists(base_dir):
@@ -50,7 +51,7 @@ def initialize_ds(
         n_simulations
     ):
     """Initialize empty dataset."""
-    ds_alpha = xr.Dataset(
+    ds_rec = xr.Dataset(
         {
             "inflist_asc": (("simulation", "t0", "steps"), np.empty(
                 (n_simulations, len(t0_values_ascending), steps)
@@ -66,89 +67,50 @@ def initialize_ds(
         }
     )
 
-    return ds_alpha
+    return ds_rec
 
 def run_simulation_wrapper(i, g_type, steps,
                            t0_values_ascending, t0_values_descending,
-                           inf_chance, rec_chance,
-                           #network_states
-                           network_states_ascending, network_states_descending
+                           inf_chance, rec_chance
                            ):
     """Wrapper für die Simulation, der den Index und die Ergebnisse zurückgibt."""
-    inflist_ascending, _= run_hysteresis_simulation(
+    inflist_ascending, inflist_descending = run_hysteresis_simulation(
         g_type, steps,
         t0_values_ascending, t0_values_descending,
-        inf_chance, rec_chance,
-        #network_states
-        network_states_ascending, network_states_descending
-        )
-    _, inflist_descending = run_hysteresis_simulation(
-        g_type, steps,
-        t0_values_ascending, t0_values_descending,
-        inf_chance, rec_chance,
-        #network_states
-        network_states_ascending, network_states_descending
+        inf_chance, rec_chance
         )
     inflist_asc = np.array([x[2] for x in inflist_ascending])
     inflist_desc = np.array([x[2] for x in inflist_descending])[::-1]
     return i, inflist_asc, inflist_desc
 
 def parallel_simulations(steps, t0_values_ascending, t0_values_descending,
-                         inf_chance, rec_chance, g_type, n_simulations, ds_alpha):
+                         inf_chance, rec_chance, g_type, n_simulations, ds_rec):
     """Führt alle Simulationen für ein bestimmtes Alpha parallel aus."""
-    with Manager() as manager:
-        #network_states = manager.dict()  # Gemeinsames Dictionary für Netzwerkzustände
-        network_states_ascending = manager.dict()
-        network_states_descending = manager.dict()
-        # Aufsteigende Simulationen ausführen und WARTEN, bis sie fertig sind
-        with Pool(processes=os.cpu_count()) as pool:
-            results = [
-                pool.apply_async(
-                    run_simulation_wrapper,
-                    args=(i, g_type, steps, t0_values_ascending, t0_values_descending,
-                          inf_chance, rec_chance,
-                          #network_states)
-                          network_states_ascending, network_states_descending)
-                )
-                for i in range(n_simulations)
-            ]
+    pool = Pool(processes=os.cpu_count())  # Verwendet alle verfügbaren CPU-Kerne
 
-            for result in results:
-                idx, inflist_asc, inflist_desc = result.get()  # Warten, bis ALLE aufsteigenden fertig sind
-                ds_alpha["inflist_asc"][idx, :, :] = inflist_asc
-                ds_alpha["inflist_desc"][idx, :, :] = inflist_desc
+    # Parallele Ausführung der Simulationen
+    results = [
+        pool.apply_async(
+            run_simulation_wrapper,
+            args=(i, g_type, steps,
+                  t0_values_ascending, t0_values_descending,
+                  inf_chance, rec_chance
+                  )
+        )
+        for i in range(n_simulations)
+    ]
 
-    return ds_alpha
+    for result in results:
+        idx, inflist_asc, inflist_desc = result.get()  # Ergebnis abrufen
+        ds_rec["inflist_asc"][idx, :, :] = inflist_asc
+        ds_rec["inflist_desc"][idx, :, :] = inflist_desc
 
+    pool.close()
+    pool.join()
 
-# def parallel_simulations(steps, t0_values_ascending, t0_values_descending,
-#                          inf_chance, rec_chance, g_type, n_simulations, ds_alpha):
-#     """Führt alle Simulationen für ein bestimmtes Alpha parallel aus."""
-#     pool = Pool(processes=os.cpu_count())  # Verwendet alle verfügbaren CPU-Kerne
+    return ds_rec
 
-#     # Parallele Ausführung der Simulationen
-#     results = [
-#         pool.apply_async(
-#             run_simulation_wrapper,
-#             args=(i, g_type, steps,
-#                   t0_values_ascending, t0_values_descending,
-#                   inf_chance, rec_chance
-#                   )
-#         )
-#         for i in range(n_simulations)
-#     ]
-
-#     for result in results:
-#         idx, inflist_asc, inflist_desc = result.get()  # Ergebnis abrufen
-#         ds_alpha["inflist_asc"][idx, :, :] = inflist_asc
-#         ds_alpha["inflist_desc"][idx, :, :] = inflist_desc
-
-#     pool.close()
-#     pool.join()
-
-#     return ds_alpha
-
-def create_ds(network_type, average_degree, alphas, g_type,
+def create_ds(network_type, average_degree, recovery_rates, g_type,
               t0_values_ascending, t0_values_descending,
               inf_chance, steps, n_simulations,
               base_data_dir=None, base_dataset_dir=None
@@ -180,66 +142,68 @@ def create_ds(network_type, average_degree, alphas, g_type,
     checkpoint_file = os.path.join(data_dir, "checkpoint.json")
     checkpoint = load_checkpoint(checkpoint_file)
 
-    start_alpha_index = checkpoint["alpha_index"] if checkpoint else 0
+    start_rec_index = checkpoint["rec_index"] if checkpoint else 0
 
-    with tqdm(total=len(alphas),
+    with tqdm(total=len(recovery_rates),
             desc=f"Simulating for network type {network_type} degree {average_degree}",
-            unit="alpha",
-            initial=start_alpha_index) as pbar:
+            unit="rec",
+            initial=start_rec_index) as pbar:
 
         #Loop through alphas list
-        for alpha_index, alpha in enumerate(
-            alphas[start_alpha_index:],
-            start=start_alpha_index
+        for rec_index, rec in enumerate(
+            recovery_rates[start_rec_index:],
+            start=start_rec_index
             ):
 
-            ds_alpha = initialize_ds(t0_values_ascending,
+            ds_rec = initialize_ds(t0_values_ascending,
                                         t0_values_descending,
                                         steps,
                                         n_simulations
                                         )
 
-            rec_chance = inf_chance / alpha
+            rec_chance = rec
 
-            ds_alpha = parallel_simulations(steps,
+            ds_rec = parallel_simulations(steps,
                                             t0_values_ascending, t0_values_descending,
                                             inf_chance, rec_chance,
-                                            g_type, n_simulations, ds_alpha)
+                                            g_type, n_simulations, ds_rec)
 
             # Save the final dataset for the current alpha
             final_filename = os.path.join(data_dir,
-                                          f"final_simulation_alpha_{alpha}.nc"
+                                          f"final_simulation_recChance_{rec}.nc"
                                           )
-            ds_alpha.to_netcdf(final_filename)
-            log_info(f"Final dataset for alpha={alpha} saved as\n"
+            ds_rec.to_netcdf(final_filename)
+            log_info(f"Final dataset for recChance={rec} saved as\n"
                     f"{final_filename}")
 
             pbar.refresh()
 
-            del ds_alpha
+            del ds_rec
 
             save_checkpoint(checkpoint_file, {
-            "alpha_index": alpha_index + 1
+            "rec_index": rec_index + 1
             })
 
             pbar.update(1)
 
-    alpha_files = []
-    alpha_files = sorted([f for f in os.listdir(data_dir)
-                          if "final_simulation_alpha_" in f],
-                        key=lambda x: int(x.split("_")[-1].split(".")[0]))
+    rec_files = []
+    rec_files = sorted(
+    [f for f in os.listdir(data_dir) if "final_simulation_recChance_" in f],
+    key=lambda x: float(re.search(r"final_simulation_recChance_(\d+\.\d+)", x).group(1))
+    )
 
     # Merge all saved datasets
-    if len(alpha_files) == len(alphas):
+    if len(rec_files) == len(recovery_rates):
         datasets = []
 
-        for idx, f in enumerate(alpha_files):
+        for idx, f in enumerate(rec_files):
             ds = xr.open_dataset(os.path.join(data_dir, f))
-            ds = ds.expand_dims("alpha")
-            ds = ds.assign_coords(alpha=(["alpha"], [alphas[idx]]))
+            ds = ds.expand_dims("recovery_rate")
+            ds = ds.assign_coords(recovery_rate=(["recovery_rate"],
+                                                  [recovery_rates[idx]]))
             datasets.append(ds)
 
-        final_ds = xr.concat(datasets, dim="alpha")
+        final_ds = xr.concat(datasets, dim="recovery_rate")
 
         # Add attributes to the merged dataset
         if network_type in ["connected_watts_strogatz", "random_regular_graph"]:
@@ -254,8 +218,8 @@ def create_ds(network_type, average_degree, alphas, g_type,
             "average_degree": average_degree
         }
 
-        merged_filename = os.path.join(dataset_dir, f"one_network_for_asc_and_desc_reversedt0_final_ds_{network_type}_degree{
-            average_degree}.nc")
+        merged_filename = os.path.join(dataset_dir, f"final_ds_{
+            network_type}_degree{average_degree}.nc")
         final_ds.to_netcdf(merged_filename)
         log_info(f"Merged datasets saved as {merged_filename} in {data_dir}")
     else:

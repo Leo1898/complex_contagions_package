@@ -6,3 +6,6 @@ figs/
 src/complex_contagions_package/__pycache__/
 *.pyc
 *.pyo
+vids/
+heatmaps/
+heatmapsForRec/

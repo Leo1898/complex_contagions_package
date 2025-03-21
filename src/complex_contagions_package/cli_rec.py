@@ -6,7 +6,10 @@ import click
 import networkx as nx
 import numpy as np
 
-from complex_contagions_package.dataset_creator import create_data_directory, create_ds
+from complex_contagions_package.dataset_creator_for_recov_rate import (
+    create_data_directory,
+    create_ds,
+)
 from complex_contagions_package.logging import log_error, log_info
 
 data_dir, _ = create_data_directory()
@@ -35,13 +38,13 @@ def check_for_checkpoint():
     if os.path.exists(checkpoint_file):
         with open(checkpoint_file) as f:
             checkpoint_data = json.load(f)
-            return checkpoint_data.get("alpha_index", 0) != 0
+            return checkpoint_data.get("rec_index", 0) != 0
     return False
 
 def reset_checkpoint():
     """Resets checkpoint to initial state."""
     with open(checkpoint_file, "w") as f:
-        json.dump({"alpha_index": 0}, f)
+        json.dump({"rec_index": 0}, f)
     log_info("Checkpoint has been reset.")
 
 def delete_simulation_files():
@@ -58,19 +61,19 @@ def delete_simulation_files():
 
 def generate_t0_values(t0_config):
     """Converts t0 values from config into a list."""
-    return np.round(np.linspace(
+    return np.linspace(
         t0_config["start"],
         t0_config["stop"],
         t0_config["steps"]
-    ), 2)#.tolist()
+    )#.tolist()
 
-def generate_alphas(alphas_config):
+def generate_rec_chances(recovery_rates_config):
     """Converts alphas from config into a list."""
-    return np.linspace(
-        alphas_config["start"],
-        alphas_config["stop"],
-        alphas_config["steps"]
-    ).astype(int)#.tolist()
+    return np.round(np.linspace(
+        recovery_rates_config["start"],
+        recovery_rates_config["stop"],
+        recovery_rates_config["steps"]
+    ),2)#.tolist()
 
 def create_graph(network_type, average_degree=None):
     """Creates network according to chosen network type."""
@@ -87,7 +90,7 @@ def start_simulation(config):
     """Helper function to start the simulation."""
     config["t0_values_ascending"] = generate_t0_values(config["t0_values_ascending"])
     config["t0_values_descending"] = generate_t0_values(config["t0_values_descending"])
-    config["alphas"] = generate_alphas(config["alphas"])
+    config["recovery_rates"] = generate_rec_chances(config["recovery_rates"])
 
     if config["network_type"] in ["connected_watts_strogatz", "random_regular_graph"]:
         config["g_type"] = create_graph(config["network_type"],
@@ -98,7 +101,7 @@ def start_simulation(config):
     create_ds(
         config["network_type"],
         config["average_degree"],
-        config["alphas"],
+        config["recovery_rates"],
         config["g_type"],
         config["t0_values_ascending"],
         config["t0_values_descending"],
@@ -149,7 +152,7 @@ def start():
     use_defaults = click.confirm(
         f"The following settings from config.json will be applied:\n"
         f"Infection Chance: {config["INF_CHANCE"]}\n"
-        f"Alpha Values: {config["alphas"]}\n"
+        f"RecChance Values: {config["recovery_rates"]}\n"
         f"Number of Simulations: {config["n_simulations"]}\n"
         f"Steps per Simulation: {config["steps"]}\n"
         f"Network Type: {network_type_attr}\n"
