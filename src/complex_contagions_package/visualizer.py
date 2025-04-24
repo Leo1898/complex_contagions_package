@@ -350,7 +350,7 @@ class DiffusionPlotter:
         hysteresis_df, _ = hysteresis_calc(simulation, ds, alphas, t0)
 
         # Prepare histogram data for heatmap
-        bin_edges = np.linspace(-10, 100, 111)  # Fixed y-axis range from -10 to 60
+        bin_edges = np.linspace(-100, 100, 111)  # Fixed y-axis range from -10 to 60
         hysteresis_df['hysteresis_bin'] = pd.cut(hysteresis_df['hysteresis_area'],
                                                 bins=bin_edges)
 
@@ -492,8 +492,8 @@ class DiffusionPlotter:
             ax_main.plot(avg_hysteresis_df['alpha'],
                         avg_hysteresis_df['avg_hysteresis_area'],
                         #marker='o',
-                        #linestyle=linestyle_map[network_type],
-                        #color=color_map[average_degree],
+                        linestyle=linestyle_map[network_type],
+                        color=color_map[average_degree],
                         label=f"{network_type} (Degree: {average_degree})")
 
         # Beschriftung und Formatierung

@@ -1,10 +1,34 @@
 """Simulation analysis."""
+import networkx as nx
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 # from complex_contagions_package.logging import log_error
 # from complex_contagions_package.simulator import run_hysteresis_simulation
 
+def analyze_clusters(G):
+    """Analysiert Cluster infizierter Knoten im Netzwerk G."""
+    infected_nodes = [n for n, d in G.nodes(data=True) if d.get("inf", 0) == 1]
+    subgraph = G.subgraph(infected_nodes)
+    clusters = list(nx.connected_components(subgraph))
+    cluster_sizes = [len(c) for c in clusters]
+
+    if not cluster_sizes:
+        return {
+            "max_cluster_size": 0,
+            "mean_cluster_size": 0,
+            "largest_cluster_fraction": 0,
+            "n_clusters": 0
+        }
+
+    max_cluster = max(cluster_sizes)
+    return {
+        "max_cluster_size": max_cluster,
+        "mean_cluster_size": np.mean(cluster_sizes),
+        "largest_cluster_fraction": max_cluster / len(infected_nodes),
+        "n_clusters": len(cluster_sizes)
+    }
 
 def consolidate_data(simulation, ds):
     """Returns data for chosen alpha and simulation no. or average if selected."""

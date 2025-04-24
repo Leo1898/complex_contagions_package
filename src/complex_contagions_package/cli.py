@@ -62,7 +62,7 @@ def generate_t0_values(t0_config):
         t0_config["start"],
         t0_config["stop"],
         t0_config["steps"]
-    ), 2)#.tolist()
+    ), 2).tolist()
 
 def generate_alphas(alphas_config):
     """Converts alphas from config into a list."""
@@ -70,7 +70,7 @@ def generate_alphas(alphas_config):
         alphas_config["start"],
         alphas_config["stop"],
         alphas_config["steps"]
-    ).astype(int)#.tolist()
+    ).astype(int).tolist()
 
 def create_graph(network_type, average_degree=None):
     """Creates network according to chosen network type."""

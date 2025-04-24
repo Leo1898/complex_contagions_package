@@ -1,4 +1,5 @@
 """Module contains simulation logic."""
+from complex_contagions_package.analyser import analyze_clusters
 from complex_contagions_package.diffusion_behavior import recover, spread
 from complex_contagions_package.logging import log_info
 from complex_contagions_package.network_generator import countinf, makeg
@@ -20,7 +21,7 @@ def simulate(
     """
     simulation_type = "ascending" if ascending else "descending"
     g = makeg(t0, g_type, simulation_type=simulation_type, prev_g=prev_g)
-
+    initial_g = g.copy()
     inflist = []
 
     for _ in range(steps):
@@ -28,10 +29,10 @@ def simulate(
         recover(g, recovery_chance)
         inflist.append(countinf(g))
 
-    return inflist, g
+    return inflist, g, initial_g
 
 def run_hysteresis_simulation(
-        g_type, steps,
+        i, g_type, steps,
         t0_values_ascending, t0_values_descending,
         inf_chance, rec_chance,
         network_states_ascending, network_states_descending
@@ -49,38 +50,44 @@ def run_hysteresis_simulation(
 
     for idx, t0 in enumerate(t0_values_ascending):
         if idx == 0:
-            inflist, g = simulate(t0, g_type, steps, inf_chance, rec_chance, ascending=True)
+            inflist, g, initial_g = simulate(t0, g_type, steps, inf_chance, rec_chance, ascending=True)
             #log_info("Initial asc_network state created")
         else:
-            prev_t0 = t0_values_ascending[0]#[idx-1]
-            g = network_states_ascending.get(prev_t0)
+            #prev_t0 = t0_values_ascending[idx-1]#[0]
+            g_prev = initial_g #network_states_ascending[i].get(prev_t0)
             #log_info(f"Asc_network state loaded for {t0}")
-            inflist, g = simulate(t0, g_type, steps, inf_chance, rec_chance, ascending=True, prev_g=g)
+            inflist, g, _ = simulate(t0, g_type, steps, inf_chance, rec_chance, ascending=True, prev_g=g_prev)
 
-        inflist_ascending.append((idx, t0, inflist))
-        network_states_ascending[t0] = g.copy()
+        network_states_ascending[i][t0] = g.copy()
         #log_info(f"Saved asc_network state for t0={t0}")
+
+        cluster_stats = analyze_clusters(g)
+
+        inflist_ascending.append((idx, t0, inflist, cluster_stats))
+
 
     inflist_descending = []
 
     for idx, t0 in enumerate(t0_values_descending):
-        prev_t0 = t0_values_ascending[-1]
-        g = network_states_ascending.get(prev_t0)
-        inflist, _ = simulate(t0, g_type, steps, inf_chance, rec_chance, ascending=False, prev_g=g)
+        prev_t0 = t0_values_descending[idx]
+        g_prev = network_states_ascending[i].get(prev_t0)
+        inflist, _, _ = simulate(t0, g_type, steps, inf_chance, rec_chance, ascending=False, prev_g=g_prev)
         # if idx == 0:
         #     prev_t0 = t0_values_ascending[-1]
-        #     g = network_states_ascending.get(prev_t0)
+        #     g_prev = network_states_ascending[i].get(prev_t0)
         #     #log_info("Initial desc_network state loaded")
-        #     inflist, g = simulate(t0, g_type, steps, inf_chance, rec_chance, ascending=False, prev_g=g)
+        #     inflist, g = simulate(t0, g_type, steps, inf_chance, rec_chance, ascending=False, prev_g=g_prev)
         # else:
         #     prev_t0 = t0_values_descending[idx-1]
-        #     g = network_states_ascending.get(prev_t0)
+        #     g_prev = network_states_descending[i].get(prev_t0)
         #     #log_info(f"Desc_network state loaded for {t0}")
-        #     inflist, g = simulate(t0, g_type, steps, inf_chance, rec_chance, ascending=False, prev_g=g)  
+        #     inflist, g = simulate(t0, g_type, steps, inf_chance, rec_chance, ascending=False, prev_g=g_prev)
 
-        inflist_descending.append((idx, t0, inflist))
-        #network_states_descending[t0] = g.copy
+        #network_states_descending[i][t0] = g.copy()
         #log_info(f"Saved desc_network state for t0={t0}")
+        cluster_stats = analyze_clusters(g)
+
+        inflist_descending.append((idx, t0, inflist, cluster_stats))
 
     return inflist_ascending, inflist_descending
 

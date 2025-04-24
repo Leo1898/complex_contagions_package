@@ -3,7 +3,8 @@ import random
 
 import networkx as nx
 
-def initialize_infection(g, infection_value=1): #infectin_value = 1 statt 0 wenn komplett infiziert sein soll
+
+def initialize_infection(g, infection_value=1): #infectin_value = 0 statt 1 wenn fast komplett infiziert sein soll
     """Random node + all its neighbors get infected."""
     r = random.choice(list(g))
     g.nodes[r]["inf"] = infection_value
@@ -29,7 +30,7 @@ def makeg(t0, g_type, simulation_type="ascending", prev_g=None):
     if prev_g is None:
         g = g_type.copy()
         nx.set_node_attributes(g, 0, "inf")  # Standard: Alle nicht infiziert
-        #nx.set_node_attributes(g, 1, "inf")
+        #nx.set_node_attributes(g, 1, "inf") # wenn fast alle infiziert sein sollen
     else:
         g = prev_g.copy()
 
