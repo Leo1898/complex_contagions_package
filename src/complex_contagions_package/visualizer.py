@@ -50,7 +50,7 @@ def heatmap_generator(input_folder=None, output_folder=None, network = "random")
         network_type = ds.attrs.get("network_type", "Unknown")
         average_degree = ds.attrs.get("average_degree", "Unknown")
 
-        hysteresis_df, _ = hysteresis_calc(simulation, ds, alphas, t0)
+        _, hysteresis_df, _ = hysteresis_calc(simulation, ds, alphas, t0)
 
         # Prepare histogram data for heatmap
         bin_edges = np.linspace(-10, 60, 71)  # Fixed y-axis range from -10 to 60
@@ -210,6 +210,66 @@ class DiffusionPlotter:
         plt.title(f"Diffusion for {direction} t0 - Simulation {simulation}")
         plt.show()
 
+    def plot_alpha_sim_reversed(self, alpha_input, alpha_slider,
+                       simulation, direction, show_average
+                       ):
+        """Plots simulation data for specific alpha values from input or slider."""
+        if alpha_input.strip():
+            alphas = self.parse_alpha_input(alpha_input)
+            use_slider = False
+        else:
+            alphas = [alpha_slider]
+            use_slider = True
+
+        if show_average:
+            simulation = "Average"
+
+        fig, ax_main = plt.subplots(figsize=(15, 5))
+        ax2 = ax_main.twinx() if use_slider and direction != "Desc vs Asc" else None
+        ds = self.ds
+
+        for alpha in alphas:
+            lists = consolidate_data(simulation, ds)
+            inflist_asc_fin, inflist_desc_fin, inflist_asc_all, inflist_desc_all = lists
+
+            inflist_asc_fin = inflist_asc_fin.sel(alpha=alpha)
+            inflist_desc_fin = inflist_desc_fin.sel(alpha=alpha)
+            inflist_asc_all = inflist_asc_all.sel(alpha=alpha)
+            inflist_desc_all = inflist_desc_all.sel(alpha=alpha)
+
+            if direction == "Desc vs Asc":
+                inflist_asc_fin.plot(x="t0", ax=ax_main,
+                                     label=f"Alpha {alpha} Descending"
+                                     )
+                inflist_desc_fin.plot(x="t0", ax=ax_main,
+                                      label=f"Alpha {alpha} Ascending"
+                                      )
+                ax_main.legend()
+                if ax2:
+                    ax2.set_visible(False)
+
+            elif direction == "Descending":
+                if use_slider:
+                    inflist_asc_all.plot(x="t0", y="steps", ax=ax2, alpha=0.4)
+                inflist_asc_fin.plot(x="t0", ax=ax_main, label=f"Alpha {alpha}")
+                ax_main.legend()
+                ax_main.set_title("")
+
+            elif direction == "Ascending":
+                if use_slider:
+                    inflist_desc_all.plot(x="t0", y="steps", ax=ax2, alpha=0.4)
+                inflist_desc_fin.plot(x="t0", ax=ax_main, label=f"Alpha {alpha}")
+                ax_main.legend()
+                ax_main.set_title("")
+
+        ax_main.set_xlabel("Threshold t0")
+        ax_main.set_ylabel("Final number of infected nodes")
+        ax_main.set_ylim(0, 110)
+
+        plt.tight_layout()
+        plt.title(f"Diffusion for {direction} t0 - Simulation {simulation}")
+        plt.show()
+
     def parse_alpha_input(self, alpha_str):
         """Parses the alpha input from the text field into a list of integers."""
         try:
@@ -281,6 +341,79 @@ class DiffusionPlotter:
 
         interactive_plot = widgets.interactive(
             self.plot_alpha_sim,
+            alpha_input=alpha_input,
+            alpha_slider=alpha_slider,
+            simulation=simulation_slider,
+            direction=direction_toggle,
+            show_average=average_checkbox
+        )
+
+        display(main_box)
+        display(interactive_plot.children[-1])
+
+    def show_widgets_reversed(self):
+        """Widgets zur Steuerung des Plots ohne doppelte Anzeige der Einzelwidgets."""
+        direction_toggle = widgets.ToggleButtons(
+            options=["Desc vs Asc", "Descending", "Ascending"],
+            description="Direction:",
+            disabled=False,
+            button_style="info"
+        )
+
+        alpha_slider = widgets.IntSlider(
+            value=self.available_alphas[-1],
+            min=self.available_alphas.min(),
+            max=self.available_alphas.max(),
+            step=2,
+            description="Alpha:",
+            continuous_update=False
+        )
+
+        simulation_slider = widgets.IntSlider(
+            value=self.available_simulation[0],
+            min=self.available_simulation.min(),
+            max=self.available_simulation.max(),
+            step=1,
+            description="Simulation:",
+            continuous_update=False
+        )
+
+        average_checkbox = widgets.Checkbox(
+            value=False,
+            description="Show Average",
+            disabled=False
+        )
+
+        alpha_input = widgets.Text(
+            placeholder='e.g.: 100, 50, 10, 5',
+            style={'description_width': '0px'},
+            layout=widgets.Layout(width='150px')
+        )
+
+        alpha_label = widgets.Label(
+            value='Choose alphas to be plotted together:',
+            layout=widgets.Layout(width='auto')
+        )
+
+        alpha_box = widgets.VBox([alpha_slider, widgets.VBox(
+            [alpha_label, alpha_input]
+            )],
+            layout=widgets.Layout(align_items='center',
+                                  justify_content='center'
+                                                       ))
+
+        simulation_box = widgets.VBox([simulation_slider, average_checkbox])
+        control_box = widgets.HBox([alpha_box, simulation_box],
+                                   layout=widgets.Layout(align_items='center',
+                                                         justify_content='center'
+                                                         ))
+        main_box = widgets.VBox([control_box, direction_toggle],
+                                layout=widgets.Layout(align_items='center',
+                                                      justify_content='center'
+                                                      ))
+
+        interactive_plot = widgets.interactive(
+            self.plot_alpha_sim_reversed,
             alpha_input=alpha_input,
             alpha_slider=alpha_slider,
             simulation=simulation_slider,
@@ -474,7 +607,7 @@ class DiffusionPlotter:
             t0 = ds.t0.values
 
             # Berechne die Hysterese
-            _, avg_hysteresis_df = hysteresis_calc(simulation, ds, alphas, t0)
+            _ ,_, avg_hysteresis_df = hysteresis_calc(simulation, ds, alphas, t0)
 
             # Extrahiere Metadaten
             network_type = ds.attrs.get("network_type", "Unknown")
@@ -607,3 +740,42 @@ class DiffusionPlotter:
         ax_main.legend()
         plt.tight_layout()
         plt.show()
+
+    def plot_hysteresis_vs_clusterdiff_per_alpha(self, selected_alphas=None):
+            """
+            Visualisiert die Korrelation zwischen Hysterese(t0) und Cmax-Differenz(t0)
+            pro Simulation, getrennt nach alpha.
+            """
+            ds = self.ds
+            alphas = self.available_alphas
+            t0 = self.available_t0
+            simulation = self.available_simulation
+            network_type = ds.attrs.get("network_type", "Unknown")
+            average_degree = ds.attrs.get("average_degree", "Unknown")
+            if selected_alphas is None:
+                selected_alphas = alphas
+
+            df, _, _ = hysteresis_calc(simulation, ds, selected_alphas, t0)
+
+            for alpha in selected_alphas:
+                plt.figure(figsize=(6,5))
+                
+                df_alpha = df[df["alpha"] == alpha]
+                
+                sns.scatterplot(
+                    data=df_alpha,
+                    x="CMaxdiff",
+                    y="H",
+                    hue="t0",
+                    palette="viridis",
+                    s=60,
+                    edgecolor="black"
+                )
+                plt.title(f"Hysterese vs Cluster-Differenz (alpha = {alpha})")
+                plt.xlabel("Cmax↑ - Cmax↓")
+                plt.ylabel("I↑ - I↓ (Hysterese)")
+                plt.grid(True)
+                plt.legend(title="t₀", bbox_to_anchor=(1.05, 1), loc="upper left")
+                plt.tight_layout()
+                plt.show()
+

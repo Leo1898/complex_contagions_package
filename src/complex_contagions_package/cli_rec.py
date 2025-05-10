@@ -61,11 +61,11 @@ def delete_simulation_files():
 
 def generate_t0_values(t0_config):
     """Converts t0 values from config into a list."""
-    return np.linspace(
+    return np.round(np.linspace(
         t0_config["start"],
         t0_config["stop"],
         t0_config["steps"]
-    )#.tolist()
+    ), 2).tolist()
 
 def generate_rec_chances(recovery_rates_config):
     """Converts alphas from config into a list."""

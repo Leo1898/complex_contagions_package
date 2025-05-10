@@ -9,12 +9,12 @@
         "stop": 1,
         "steps": 51
     },
-    "t0_values_descending": {
+    "t0_values_ascending": {
         "start": 0,
         "stop": 1,
         "steps": 101
     },
-    "t0_values_ascending": {
+    "t0_values_descending": {
         "start": 1,
         "stop": 0,
         "steps": 101

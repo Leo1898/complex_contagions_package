@@ -7,6 +7,7 @@ import numpy as np
 import xarray as xr
 from tqdm import tqdm
 
+#from complex_contagions_package.analyser import find_stable_critical_t0
 from complex_contagions_package.logging import log_error, log_info
 from complex_contagions_package.simulator import run_hysteresis_simulation
 
@@ -59,22 +60,25 @@ def initialize_ds(
                 (n_simulations, len(t0_values_descending), steps)
                 )),
 
-            # Clusterdaten:
-            "max_cluster_size_asc": (("simulation", "t0"), np.empty(
+            #Clusterstats
+            "max_cluster_size_asc":(("simulation", "t0"), np.empty(
                 (n_simulations, len(t0_values_ascending)))),
-            "max_cluster_size_desc": (("simulation", "t0"), np.empty(
+            "max_cluster_size_desc":(("simulation", "t0"), np.empty(
                 (n_simulations, len(t0_values_descending)))),
-            "mean_cluster_size_asc": (("simulation", "t0"), np.empty(
+
+            "mean_cluster_size_asc":(("simulation", "t0"), np.empty(
                 (n_simulations, len(t0_values_ascending)))),
-            "mean_cluster_size_desc": (("simulation", "t0"), np.empty(
+            "mean_cluster_size_desc":(("simulation", "t0"), np.empty(
                 (n_simulations, len(t0_values_descending)))),
-            "largest_cluster_fraction_asc": (("simulation", "t0"), np.empty(
+
+            "largest_cluster_fraction_asc":(("simulation", "t0"), np.empty(
                 (n_simulations, len(t0_values_ascending)))),
-            "largest_cluster_fraction_desc": (("simulation", "t0"), np.empty(
+            "largest_cluster_fraction_desc":(("simulation", "t0"), np.empty(
                 (n_simulations, len(t0_values_descending)))),
-            "n_clusters_asc": (("simulation", "t0"), np.empty(
+
+            "n_clusters_asc":(("simulation", "t0"), np.empty(
                 (n_simulations, len(t0_values_ascending)))),
-            "n_clusters_desc": (("simulation", "t0"), np.empty(
+            "n_clusters_desc":(("simulation", "t0"), np.empty(
                 (n_simulations, len(t0_values_descending)))),
         },
         coords={
@@ -90,47 +94,62 @@ def run_simulation_wrapper(i, g_type, steps,
                            t0_values_ascending, t0_values_descending,
                            inf_chance, rec_chance,
                            #network_states
-                           network_states_ascending, network_states_descending
+                           network_states_ascending, network_states_descending,
                            ):
     """Wrapper für die Simulation, der den Index und die Ergebnisse zurückgibt."""
     inflist_ascending, _= run_hysteresis_simulation(
         i, g_type, steps,
-        t0_values_ascending, t0_values_descending,
-        inf_chance, rec_chance,
+        t0_values_ascending=t0_values_ascending,
+        t0_values_descending=None,
+        inf_chance=inf_chance,
+        rec_chance=rec_chance,
         #network_states
-        network_states_ascending, network_states_descending
+        network_states_ascending=network_states_ascending,
+        network_states_descending=network_states_descending,
+        #overridet0=None
         )
+
+    # overridet0 = find_stable_critical_t0(inflist_ascending, hys_threshold=30)
+    # log_info(f"Critical t0 identified for simulation {i}: {critical_start_t0}")
+
     _, inflist_descending = run_hysteresis_simulation(
         i, g_type, steps,
-        t0_values_ascending, t0_values_descending,
-        inf_chance, rec_chance,
+        t0_values_ascending=None,
+        t0_values_descending=t0_values_descending,
+        inf_chance=inf_chance,
+        rec_chance=rec_chance,
         #network_states
-        network_states_ascending, network_states_descending
+        network_states_ascending=network_states_ascending,
+        network_states_descending=network_states_descending,
+        #overridet0=coverridet0
         )
+
     inflist_asc = np.array([x[2] for x in inflist_ascending])
     inflist_desc = np.array([x[2] for x in inflist_descending])[::-1]
 
     max_cluster_size_asc = np.array([x[3]["max_cluster_size"]
-                                    for x in inflist_ascending])
-    max_cluster_size_desc= np.array([x[3]["max_cluster_size"]
-                                    for x in inflist_descending])[::-1]
+                                     for x in inflist_ascending])
+    max_cluster_size_desc = np.array([x[3]["max_cluster_size"]
+                                     for x in inflist_descending])[::-1]
 
-    mean_cluster_asc = np.array([x[3]["mean_cluster_size"]
-                                    for x in inflist_ascending])
-    mean_cluster_desc = np.array([x[3]["mean_cluster_size"]
-                                    for x in inflist_descending])[::-1]
+    mean_cluster_size_asc = np.array([x[3]["mean_cluster_size"]
+                                     for x in inflist_ascending])
+    mean_cluster_size_desc = np.array([x[3]["mean_cluster_size"]
+                                     for x in inflist_descending])[::-1]
 
     largest_cluster_fraction_asc = np.array([x[3]["largest_cluster_fraction"]
-                                    for x in inflist_ascending])
+                                     for x in inflist_ascending])
     largest_cluster_fraction_desc = np.array([x[3]["largest_cluster_fraction"]
-                                    for x in inflist_descending])[::-1]
+                                     for x in inflist_descending])[::-1]
 
-    n_clusters_asc = np.array([x[3]["n_clusters"] for x in inflist_ascending])
-    n_clusters_desc = np.array([x[3]["n_clusters"] for x in inflist_descending])[::-1]
+    n_clusters_asc = np.array([x[3]["n_clusters"]
+                                     for x in inflist_ascending])
+    n_clusters_desc = np.array([x[3]["n_clusters"]
+                                     for x in inflist_descending])[::-1]
 
     return i, inflist_asc, inflist_desc, \
            max_cluster_size_asc, max_cluster_size_desc, \
-           mean_cluster_asc, mean_cluster_desc, \
+           mean_cluster_size_asc, mean_cluster_size_desc, \
            largest_cluster_fraction_asc, largest_cluster_fraction_desc, \
            n_clusters_asc, n_clusters_desc
 
@@ -141,12 +160,11 @@ def parallel_simulations(steps, t0_values_ascending, t0_values_descending,
         #network_states = manager.dict()  # Gemeinsames Dictionary für Netzwerkzustände
         network_states_ascending = manager.dict()
         network_states_descending = manager.dict()
-        # Aufsteigende Simulationen ausführen und WARTEN, bis sie fertig sind
 
         for i in range(n_simulations):
             network_states_ascending[i] = manager.dict()
             network_states_descending[i] = manager.dict()
-
+        # Aufsteigende Simulationen ausführen und WARTEN, bis sie fertig sind
         with Pool(processes=os.cpu_count()) as pool:
             results = [
                 pool.apply_async(
@@ -154,7 +172,8 @@ def parallel_simulations(steps, t0_values_ascending, t0_values_descending,
                     args=(i, g_type, steps, t0_values_ascending, t0_values_descending,
                           inf_chance, rec_chance,
                           #network_states)
-                          network_states_ascending, network_states_descending)
+                          network_states_ascending, network_states_descending,
+                          )
                 )
                 for i in range(n_simulations)
             ]
@@ -166,57 +185,29 @@ def parallel_simulations(steps, t0_values_ascending, t0_values_descending,
                 mean_cluster_asc, mean_cluster_desc,
                 frac_cluster_asc, frac_cluster_desc,
                 n_clusters_asc, n_clusters_desc
-                 ) = result.get()  # Warten, bis ALLE aufsteigenden fertig sind
+                ) = result.get()
 
-                ds_alpha["inflist_asc"][idx, :, :] = inflist_asc
-                ds_alpha["inflist_desc"][idx, :, :] = inflist_desc
+                ds_alpha["inflist_asc"][idx, :] = inflist_asc
+                ds_alpha["inflist_desc"][idx, :] = inflist_desc
 
                 ds_alpha["max_cluster_size_asc"][idx, :] = max_cluster_asc
                 ds_alpha["max_cluster_size_desc"][idx, :] = max_cluster_desc
 
-                ds_alpha["largest_cluster_fraction_asc"][idx, :] = frac_cluster_asc
-                ds_alpha["largest_cluster_fraction_desc"][idx, :] = frac_cluster_desc
-
                 ds_alpha["mean_cluster_size_asc"][idx, :] = mean_cluster_asc
                 ds_alpha["mean_cluster_size_desc"][idx, :] = mean_cluster_desc
+
+                ds_alpha["largest_cluster_fraction_asc"][idx, :] = frac_cluster_asc
+                ds_alpha["largest_cluster_fraction_desc"][idx, :] = frac_cluster_desc
 
                 ds_alpha["n_clusters_asc"][idx, :] = n_clusters_asc
                 ds_alpha["n_clusters_desc"][idx, :] = n_clusters_desc
 
     return ds_alpha
 
-
-# def parallel_simulations(steps, t0_values_ascending, t0_values_descending,
-#                          inf_chance, rec_chance, g_type, n_simulations, ds_alpha):
-#     """Führt alle Simulationen für ein bestimmtes Alpha parallel aus."""
-#     pool = Pool(processes=os.cpu_count())  # Verwendet alle verfügbaren CPU-Kerne
-
-#     # Parallele Ausführung der Simulationen
-#     results = [
-#         pool.apply_async(
-#             run_simulation_wrapper,
-#             args=(i, g_type, steps,
-#                   t0_values_ascending, t0_values_descending,
-#                   inf_chance, rec_chance
-#                   )
-#         )
-#         for i in range(n_simulations)
-#     ]
-
-#     for result in results:
-#         idx, inflist_asc, inflist_desc = result.get()  # Ergebnis abrufen
-#         ds_alpha["inflist_asc"][idx, :, :] = inflist_asc
-#         ds_alpha["inflist_desc"][idx, :, :] = inflist_desc
-
-#     pool.close()
-#     pool.join()
-
-#     return ds_alpha
-
 def create_ds(network_type, average_degree, alphas, g_type,
               t0_values_ascending, t0_values_descending,
               inf_chance, steps, n_simulations,
-              base_data_dir=None, base_dataset_dir=None
+              base_data_dir=None, base_dataset_dir=None,
               ):
     """Runs simulations for various alpha values and stores results in netCDF format.
 
@@ -230,8 +221,8 @@ def create_ds(network_type, average_degree, alphas, g_type,
                               associated with a node.
         alphas (list): List of alpha values (infection/recovery rate ratios).
         g_type (networkx.Graph): The network structure for simulations.
-        t0_values_ascending (list): List of ascending `t0` values.
-        t0_values_descending (list): List of descending `t0` values.
+        t0_values_ascending (list): List of ascending t0 values.
+        t0_values_descending (list): List of descending t0 values.
         inf_chance (float): Infection probability.
         steps (int): Number of steps in each simulation.
         n_simulations (int): Number of simulations to run per alpha.
@@ -239,7 +230,7 @@ def create_ds(network_type, average_degree, alphas, g_type,
         base_dataset_dir (str, optional): Directory to store final dataset files.
     """
     data_dir, dataset_dir = create_data_directory(base_data_dir,
-                                                  base_dataset_dir
+                                                  base_dataset_dir,
                                                   )
 
     checkpoint_file = os.path.join(data_dir, "checkpoint.json")
@@ -319,7 +310,7 @@ def create_ds(network_type, average_degree, alphas, g_type,
             "average_degree": average_degree
         }
 
-        merged_filename = os.path.join(dataset_dir, f"cl_orange_gruen_final_ds_{network_type}_degree{
+        merged_filename = os.path.join(dataset_dir, f"gelb_gruen_final_ds_{network_type}_degree{
             average_degree}.nc")
         final_ds.to_netcdf(merged_filename)
         log_info(f"Merged datasets saved as {merged_filename} in {data_dir}")

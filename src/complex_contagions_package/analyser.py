@@ -60,6 +60,7 @@ def consolidate_data(simulation, ds):
             simulation=simulation_index
             )
 
+
     return (inflist_asc_last_step, inflist_desc_last_step,
             inflist_asc_all_steps, inflist_desc_all_steps)
 
@@ -67,34 +68,91 @@ def hysteresis_calc(simulation, ds,
                     alphas,
                     t0):
     """Calculates hysteresis areas and averages per alpha."""
-    lists = consolidate_data(simulation, ds)
-    asc_curve, desc_curve, _, _ = lists
+    #df_t0 = []
+    df_t0agg = []
+    df_simagg = []
 
-    hysteresis_areas = []
-    avg_hysteresis_areas = []
+    # cluster_vars_exist = (
+    #     "max_cluster_size_asc" in ds.variables and
+    #     "mean_cluster_size_asc" in ds.variables and
+    #     "largest_cluster_fraction_asc" in ds.variables and
+    #     "n_clusters_asc" in ds.variables
+    # )
 
     for alpha in alphas:
         areas_per_alpha = []
-        for sim in range(len(simulation)):
-            asc_sim = asc_curve.sel(alpha=alpha).isel(simulation=sim)
-            desc_sim = desc_curve.sel(alpha=alpha).isel(simulation=sim)
 
+        for sim in range(len(simulation)):
+
+            # # Infektionsdifferenz am letzten Step
+            # I_up = ds["inflist_asc"].sel(alpha=alpha).isel(simulation=sim, steps=-1)
+            # I_down = ds["inflist_desc"].sel(alpha=alpha).isel(simulation=sim, steps=-1)
+            # H = I_up - I_down
+
+            # if cluster_vars_exist:
+            #     # MAX_Clusterdifferenz
+            #     CMax_up = ds["max_cluster_size_asc"].sel(alpha=alpha).isel(simulation=sim)
+            #     CMax_down = ds["max_cluster_size_desc"].sel(alpha=alpha).isel(simulation=sim)
+            #     CMaxdiff = CMax_up - CMax_down
+
+            #     # MEAN_Clusterdifferenz
+            #     CMean_up = ds["mean_cluster_size_asc"].sel(alpha=alpha).isel(simulation=sim)
+            #     CMean_down = ds["mean_cluster_size_desc"].sel(alpha=alpha).isel(simulation=sim)
+            #     CMeandiff = CMean_up - CMean_down
+
+            #     # CFracMax_Clusterdifferenz
+            #     CFracMax_up = ds["largest_cluster_fraction_asc"].sel(alpha=alpha).isel(simulation=sim)
+            #     CFracMax_down = ds["largest_cluster_fraction_desc"].sel(alpha=alpha).isel(simulation=sim)
+            #     CFracMaxdiff = CFracMax_up - CFracMax_down
+
+            #     # nC_Clusterdifferenz
+            #     nC_up = ds["n_clusters_asc"].sel(alpha=alpha).isel(simulation=sim)
+            #     nC_down = ds["n_clusters_desc"].sel(alpha=alpha).isel(simulation=sim)
+            #     nCdiff = nC_up - nC_down
+            # else:
+            #     # Platzhalter np.nan, wenn Clusterdaten fehlen
+            #     CMaxdiff = np.full_like(H, np.nan)
+            #     CMeandiff = np.full_like(H, np.nan)
+            #     CFracMaxdiff = np.full_like(H, np.nan)
+            #     nCdiff = np.full_like(H, np.nan)
+
+            # for i in range(len(t0)):
+            #     df_t0.append({"alpha": alpha,
+            #                     "simulation": sim+1,
+            #                     "t0": t0[i].item(),
+            #                     "H": H[i].item(),
+            #                     "CMaxdiff": CMaxdiff[i].item(),
+            #                     "CMeandiff": CMeandiff[i].item(),
+            #                     "CFracMaxdiff": CFracMaxdiff[i].item(),
+            #                     "nCdiff": nCdiff[i].item()
+            #                 })
+
+            asc_sim = ds.inflist_asc.sel(alpha=alpha).isel(simulation=sim, steps =-1)
+            desc_sim = ds.inflist_desc.sel(alpha=alpha).isel(simulation=sim, steps =-1)
             area = np.trapz((asc_sim - desc_sim), x=t0)
-            hysteresis_areas.append({"alpha": alpha,
-                                    "simulation": sim+1, #1-based
-                                    "hysteresis_area": area
+            df_t0agg.append({"alpha": alpha,
+                            "simulation": sim+1, #1-based
+                            "hysteresis_area": area
                                     })
             areas_per_alpha.append(area)
 
         avg_area = np.mean(areas_per_alpha)
-        avg_hysteresis_areas.append({"alpha": alpha,
-                                    "avg_hysteresis_area": avg_area
-                                    })
+        df_simagg.append({"alpha": alpha,
+                          "avg_hysteresis_area": avg_area
+                        })
 
-    hysteresis_df = pd.DataFrame(hysteresis_areas)
-    avg_hysteresis_df = pd.DataFrame(avg_hysteresis_areas)
+    #df_t0 =  pd.DataFrame(df_t0)
+    df_t0agg = pd.DataFrame(df_t0agg)
+    df_simagg = pd.DataFrame(df_simagg)
 
-    return hysteresis_df, avg_hysteresis_df
+    # df = (
+    # df_t0
+    # .merge(df_t0agg, how="left", on=["alpha", "simulation"])
+    # .merge(df_simagg, how="left", on=["alpha"])
+    # )
+
+    #return df_t0, df_t0agg, df_simagg
+    return df_t0agg, df_simagg
 
 def calculate_peak_and_t0(simulation, ds, alphas, t0):
     """Calculates the maximum peak and the corresponding average t0.
@@ -153,67 +211,101 @@ def calculate_peak_and_t0(simulation, ds, alphas, t0):
     # Beide DataFrames zurückgeben
     return peaks_df, mean_peaks_df
 
-def find_all_critical_t0(ds, hys_threshold):
-    """Identifies critical t0 values directly from the dataset.
+def find_all_critical_t0_from_list(inflist_ascending, hys_threshold):
+    """Findet alle kritischen t0-Werte (Sprünge) basierend auf der Endinfektionsrate."""
+    critical_t0_values = []
+    previous_value = inflist_ascending[0][2][-1]  # letzter step von erstem t0
 
-    Parameters:
-    - ds (xarray.Dataset): The dataset containing simulation data.
-    - hys_threshold (float): Jump in end infections defined to be critical.
+    for idx, t0, inflist in inflist_ascending:
+        current_value = inflist[-1]  # letzter step dieser t0-Simulation
+        if abs(current_value - previous_value) > hys_threshold:
+            critical_t0_values.append((idx, t0, current_value))
+        previous_value = current_value
 
-    Returns:
-    - critical_t0_values_asc (dict): Critical t0 values for ascending order,
-                                     grouped by alpha.
-    - critical_t0_values_desc (dict): Critical t0 values for descending order,
-                                      grouped by alpha.
-    """
-    critical_t0_values_asc = {}
-    critical_t0_values_desc = {}
+    return critical_t0_values
 
-    # Iteriere über alle alpha-Werte
-    for alpha in ds.alpha.values:
-        # Daten für das aktuelle alpha extrahieren
-        inflist_asc = ds.sel(alpha=alpha).inflist_asc
-        inflist_desc = ds.sel(alpha=alpha).inflist_desc
+def is_stable_within_window(infectionlist, index, hys_threshold, window_size=30):
+    """Prüft, ob die Infektionswerte in einem Fenster stabil sind."""
+    end_index = min(index + window_size, len(infectionlist))
+    window_values = [infectionlist[i][2][-1] for i in range(index, end_index)]
+    return all(abs(window_values[i] - window_values[i - 1]) < hys_threshold
+               for i in range(1, len(window_values)))
 
-        # Initialisierung für aufsteigende Reihenfolge
-        critical_asc = []
-        previous_value_asc = inflist_asc.isel(steps=-1).isel(t0=0).mean(
-            dim="simulation").item()
+def find_stable_critical_t0(inflist_ascending, hys_threshold):
+    """Findet den stabilen kritischen t0-Wert aus der Liste inflist_ascending."""
+    criticals = find_all_critical_t0_from_list(inflist_ascending, hys_threshold)
 
-        # Über alle t0 in aufsteigender Reihenfolge iterieren
-        for idx, t0 in enumerate(ds.t0.values):
-            current_value = inflist_asc.isel(steps=-1).sel(t0=t0).mean(
-                dim="simulation").item()
-            if abs(current_value - previous_value_asc) > hys_threshold:
-                critical_asc.append((idx, t0, current_value))
-            previous_value_asc = current_value
+    if not criticals:
+        return None
 
-        # Speichere kritische Werte für ascending
-        critical_t0_values_asc[alpha] = critical_asc
+    for (idx, t0, _) in reversed(criticals):
+        if is_stable_within_window(inflist_ascending, idx, hys_threshold):
+            return t0  # stabiler kritischer t0 gefunden
 
-        # Initialisierung für absteigende Reihenfolge
-        critical_desc = []
-        previous_value_desc = inflist_desc.isel(steps=-1).isel(t0=0).mean(
-            dim="simulation").item()
+    return criticals[-1][1]  # fallback: letzter (nicht stabiler) kritischer t0
 
-        # Über alle t0 in absteigender Reihenfolge iterieren
-        for idx, t0 in enumerate(ds.t0.values):
-            current_value = inflist_desc.isel(steps=-1).sel(t0=t0).mean(
-                dim="simulation").item()
-            if abs(current_value - previous_value_desc) > hys_threshold:
-                critical_desc.append((idx, t0, current_value))
-            previous_value_desc = current_value
 
-        # Speichere kritische Werte für descending
-        critical_t0_values_desc[alpha] = critical_desc
+# def find_all_critical_t0(ds, hys_threshold):
+#     """Identifies critical t0 values directly from the dataset.
 
-    return critical_t0_values_asc, critical_t0_values_desc
+#     Parameters:
+#     - ds (xarray.Dataset): The dataset containing simulation data.
+#     - hys_threshold (float): Jump in end infections defined to be critical.
+
+#     Returns:
+#     - critical_t0_values_asc (dict): Critical t0 values for ascending order,
+#                                      grouped by alpha.
+#     - critical_t0_values_desc (dict): Critical t0 values for descending order,
+#                                       grouped by alpha.
+#     """
+#     critical_t0_values_asc = {}
+#     critical_t0_values_desc = {}
+
+#     # Iteriere über alle alpha-Werte
+#     for alpha in ds.alpha.values:
+#         # Daten für das aktuelle alpha extrahieren
+#         inflist_asc = ds.sel(alpha=alpha).inflist_asc
+#         inflist_desc = ds.sel(alpha=alpha).inflist_desc
+
+#         # Initialisierung für aufsteigende Reihenfolge
+#         critical_asc = []
+#         previous_value_asc = inflist_asc.isel(steps=-1).isel(t0=0).mean(
+#             dim="simulation").item()
+
+#         # Über alle t0 in aufsteigender Reihenfolge iterieren
+#         for idx, t0 in enumerate(ds.t0.values):
+#             current_value = inflist_asc.isel(steps=-1).sel(t0=t0).mean(
+#                 dim="simulation").item()
+#             if abs(current_value - previous_value_asc) > hys_threshold:
+#                 critical_asc.append((idx, t0, current_value))
+#             previous_value_asc = current_value
+
+#         # Speichere kritische Werte für ascending
+#         critical_t0_values_asc[alpha] = critical_asc
+
+#         # Initialisierung für absteigende Reihenfolge
+#         critical_desc = []
+#         previous_value_desc = inflist_desc.isel(steps=-1).isel(t0=0).mean(
+#             dim="simulation").item()
+
+#         # Über alle t0 in absteigender Reihenfolge iterieren
+#         for idx, t0 in enumerate(ds.t0.values):
+#             current_value = inflist_desc.isel(steps=-1).sel(t0=t0).mean(
+#                 dim="simulation").item()
+#             if abs(current_value - previous_value_desc) > hys_threshold:
+#                 critical_desc.append((idx, t0, current_value))
+#             previous_value_desc = current_value
+
+#         # Speichere kritische Werte für descending
+#         critical_t0_values_desc[alpha] = critical_desc
+
+#     return critical_t0_values_asc, critical_t0_values_desc
 
 
 # def is_stable_within_window(infectionlist, index, hys_threshold, window_size = 3):
 #     """Check if the infection rates within a sliding window are stable.
 
-#   Ensures the window is within the bounds of the infectionlist, collects values within
+#     Ensures the window is within the bounds of the infectionlist, collects values within
 #     the window and checks if all values in the window are within the hys_threshold.
 
 #     Parameters:

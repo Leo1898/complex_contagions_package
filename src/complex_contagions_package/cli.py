@@ -86,7 +86,7 @@ def create_graph(network_type, average_degree=None):
 def start_simulation(config):
     """Helper function to start the simulation."""
     config["t0_values_ascending"] = generate_t0_values(config["t0_values_ascending"])
-    config["t0_values_descending"] = generate_t0_values(config["t0_values_descending"])
+    config["t0_values_descending"] = config["t0_values_ascending"][::-1]#generate_t0_values(config["t0_values_descending"])
     config["alphas"] = generate_alphas(config["alphas"])
 
     if config["network_type"] in ["connected_watts_strogatz", "random_regular_graph"]:
